@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: limesurvey-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-limesurvey}
+      POSTGRES_USER: ${POSTGRES_USER:-limesurvey}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - limesurvey-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-limesurvey}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  limesurvey:
+    image: martialblog/limesurvey:6-apache
+    container_name: limesurvey-app
+    restart: unless-stopped
+    ports:
+      - "${LIMESURVEY_PORT:-8080}:8080"
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-limesurvey}
+      DB_USERNAME: ${POSTGRES_USER:-limesurvey}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrator}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      TZ: ${TZ:-UTC}
+      # Optional: Email settings
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-off}
+    volumes:
+      - limesurvey-upload:/var/www/html/upload
+      - limesurvey-config:/var/www/html/application/config
+      - ./plugins:/var/www/html/plugins:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - limesurvey-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/index.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Automated database backup (optional, enable in production)
+  backup:
+    image: postgres:15-alpine
+    container_name: limesurvey-backup
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-limesurvey}
+      POSTGRES_USER: ${POSTGRES_USER:-limesurvey}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    networks:
+      - limesurvey-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command: -c "apk add --no-cache dcron && echo '${BACKUP_SCHEDULE:-0 2 * * *} /backup.sh' | crontab - && crond -f -l 2"
+    profiles:
+      - backup
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+volumes:
+  postgres-data:
+    driver: local
+  limesurvey-upload:
+    driver: local
+  limesurvey-config:
+    driver: local
+
+networks:
+  limesurvey-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

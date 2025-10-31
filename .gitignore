@@ -1,0 +1,48 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Backups
+backups/*.sql
+backups/*.sql.gz
+backups/*.dump
+backups/*.tar.gz
+
+# LimeSurvey data
+upload/*
+!upload/.gitkeep
+config/*
+!config/.gitkeep
+
+# SSL certificates
+nginx/ssl/*
+!nginx/ssl/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Docker volumes data (if using bind mounts)
+data/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database dumps
+*.sql
+*.dump
+
+# Monitoring data
+monitoring/grafana/data/
+monitoring/prometheus/data/
